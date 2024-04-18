@@ -19,7 +19,7 @@ import androidx.core.content.ContextCompat;
 import java.io.IOException;
 import java.util.List;
 
-public class Camera1Activity extends AppCompatActivity {
+public class Camera1SurfaceActivity extends AppCompatActivity {
     private static String Tag = "Camera1Activity";
     private Camera mCamera  = null;
     private Camera.Parameters mParameters  = null;

@@ -19,9 +19,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
-            android:name=".Camera1Activity"
+            android:name=".Camera1TextureViewActivity"
+            android:exported="true">
+        </activity>
+        <activity
+            android:name=".Camera1SurfaceActivity"
+            android:exported="true">
+        </activity>
+        <activity
+            android:name=".Camera1GLSurfaceviewActivity"
             android:exported="true">
         </activity>
     </application>
