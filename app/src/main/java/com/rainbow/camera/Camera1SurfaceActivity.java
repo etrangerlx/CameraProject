@@ -1,32 +1,62 @@
 package com.rainbow.camera;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
+import android.graphics.YuvImage;
 import android.hardware.Camera;
 
+import android.media.tv.TvContract;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Message;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 
 public class Camera1SurfaceActivity extends AppCompatActivity {
     private static String Tag = "Camera1Activity";
-    private Camera mCamera  = null;
-    private Camera.Parameters mParameters  = null;
+    private Camera mCamera = null;
+    private Camera.Parameters mParameters = null;
     private Camera.CameraInfo mCameraInfo = null;
-    private Camera.Size mCameraSize  = null;
-
+    private Camera.Size mCameraSize = null;
+    byte[] mPreBuffer = null;
+    private Thread previewwrite = null;
     private SurfaceView mSurfaceView = null;
+
     private SurfaceHolder mSurfaceHolder = null;
     private SurfaceHolder.Callback mSurfaceCallback = new SurfaceHolder.Callback() {
 
@@ -36,14 +66,7 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
          */
         @Override
         public void surfaceCreated(SurfaceHolder surfaceHolder) {
-            Log.i(Tag,"surfaceCreated");
-            if(mCameraInfo == null) {
-                mCameraInfo = new Camera.CameraInfo();
-            }
-            mCameraInfo.facing = Camera.CameraInfo.CAMERA_FACING_FRONT;
-
-            mCamera = Camera.open(mCameraInfo.facing);
-
+            Log.i(Tag, "surfaceCreated");
         }
 
         /**
@@ -55,8 +78,7 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
          */
         @Override
         public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height) {
-            Log.i(Tag,"surfaceChanged");
-            changeCamera(surfaceHolder);
+            Log.i(Tag, "surfaceChanged");
             initCamera(width, height);
             try {
                 mCamera.setPreviewDisplay(surfaceHolder);
@@ -71,7 +93,7 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
          */
         @Override
         public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
-            Log.i(Tag,"surfaceDestroyed");
+            Log.i(Tag, "surfaceDestroyed");
             mCamera.stopPreview();
         }
     };
@@ -196,16 +218,86 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
         mCamera.startPreview();
     }
 
+    private void saveBmp2SD(String path, Bitmap bitmap) {
+        File file = new File(path);
+        if (!file.exists()) {
+            file.mkdir();
+        }
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String fileName = path + "/" + "IMG_" + timeStamp + ".jpg";
+        try {
+            FileOutputStream fos = new FileOutputStream(fileName);
+            BufferedOutputStream bos = new BufferedOutputStream(fos);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+            bos.flush();
+            bos.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void writeFile(String path, byte[] data) {
+        Bitmap bitmap = null;
+        if (data != null) {
+            bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+        }
+
+        if (bitmap != null) {
+            Matrix matrix = new Matrix();
+//            if (mCameraId == Camera.CameraInfo.CAMERA_FACING_BACK) {
+            matrix.postRotate(90);
+//            }else if (mCameraId == Camera.CameraInfo.CAMERA_FACING_FRONT){
+//                matrix.postRotate(90);
+//                matrix.postScale(1, -1);
+//            }
+            Bitmap rotateBmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(),
+                    bitmap.getHeight(), matrix, false);
+            saveBmp2SD(path, rotateBmp);
+            rotateBmp.recycle();
+        }
+    }
+
+    public static final String STORAGE_PATH = Environment.getExternalStorageDirectory().toString();
+    private Camera.PictureCallback mPictureCallback = new Camera.PictureCallback() {
+        @Override
+        public void onPictureTaken(final byte[] data, Camera camera) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
+                    Log.d("dump path", path);
+                    writeFile(path, data);
+                }
+            }, "captureThread").start();
+            camera.startPreview();
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        Log.i(Tag, "onCreate");
         setContentView(R.layout.activity_surfaceview);
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if(!Environment.isExternalStorageManager()) {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:"+getPackageName()));
+                    this.startActivityForResult(intent,1024);
+                }
                 requestPermissions(new String[]{Manifest.permission.CAMERA}, 11);
             }
         }
+        if (mCameraInfo == null) {
+            mCameraInfo = new Camera.CameraInfo();
+        }
+        mCameraInfo.facing = Camera.CameraInfo.CAMERA_FACING_FRONT;
+
+        mCamera = Camera.open(mCameraInfo.facing);
+
+
         mSurfaceView = findViewById(R.id.surface_view);
 
         mSurfaceHolder = mSurfaceView.getHolder();
@@ -213,18 +305,128 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
         mSurfaceHolder.setFormat(PixelFormat.TRANSPARENT);
 
         mSurfaceHolder.addCallback(mSurfaceCallback);
+
+
+        int width = mCamera.getParameters().getPreviewSize().width;
+        int height = mCamera.getParameters().getPreviewSize().height;
+        if (mPreBuffer == null) {
+            mPreBuffer = new byte[width*height*3/2];
+        }
+        mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
+        previewwrite =  new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while(true) {
+                    Log.d(Tag, "Time:" + System.currentTimeMillis());
+                    Camera.Parameters parameters = mCamera.getParameters();
+
+                    Camera.Size size = parameters.getPreviewSize();
+                    String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
+//                    String path =   "/data/local/tmp/DCIM" + "/CameraV1";
+
+                    File file = new File(path);
+                    if (!file.exists()) {
+                        file.mkdir();
+                    }
+                    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+                    String fileName = path + "/" + "IMG_" + timeStamp +"_"+width+"x"+height+".yuv";
+                    try {
+                        FileOutputStream fos = new FileOutputStream(fileName);
+                        BufferedOutputStream bos = new BufferedOutputStream(fos);
+                        bos.write(mPreBuffer);
+                        Log.i(Tag, "run: writ"+fileName);
+                        bos.flush();
+                        bos.close();
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+        previewwrite.start();
+        mCamera.setPreviewCallbackWithBuffer(new Camera.PreviewCallback() {
+            @Override
+            public void onPreviewFrame(byte[] data, Camera camera) {
+                int width = mCamera.getParameters().getPreviewSize().width;
+                int height = mCamera.getParameters().getPreviewSize().height;
+                if (mPreBuffer == null) {
+                    mPreBuffer = new byte[width*height*3/2];
+                }
+                mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
+            }
+        });
+//        mCamera.setPreviewCallback(new Camera.PreviewCallback() {
+//            @Override
+//            public void onPreviewFrame(byte[] data, Camera camera) {
+//                Log.d(Tag, "Time:" + System.currentTimeMillis());
+//                Camera.Parameters parameters = camera.getParameters();
+//                int width = mCamera.getParameters().getPreviewSize().width;
+//                int height = mCamera.getParameters().getPreviewSize().height;
+//                Camera.Size size = parameters.getPreviewSize();
+//                String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
+////                    String path =   "/data/local/tmp/DCIM" + "/CameraV1";
+//
+//                File file = new File(path);
+//                if (!file.exists()) {
+//                    file.mkdir();
+//                }
+//                String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+//                String fileName = path + "/" + "IMG_" + timeStamp +"_"+width+"x"+height+".yuv";
+//                try {
+//                    FileOutputStream fos = new FileOutputStream(fileName);
+//                    BufferedOutputStream bos = new BufferedOutputStream(fos);
+//                    bos.write(data);
+//                    Log.i(Tag, "run: writ"+fileName);
+//                    bos.flush();
+//                    bos.close();
+//                } catch (FileNotFoundException e) {
+//                    e.printStackTrace();
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
+        ImageView exchangeview = findViewById(R.id.ivExchange);
+        exchangeview.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                changeCamera(mSurfaceHolder);
+            }
+        });
+
+
+        ImageButton mCaptureButton = findViewById(R.id.btnTakePicSV);
+        mCaptureButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mCamera != null) {
+                    mCamera.takePicture(null, null, mPictureCallback);
+                }
+            }
+        });
     }
 
-//    @Override
-//    protected void onResume() {
-//        super.onResume();
-//        mCamera.startPreview();
-//    }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.i(Tag, "onResume");
+        mCamera.startPreview();
+    }
 
     @Override
     protected void onPause() {
         super.onPause();
+        Log.i(Tag, "onPause");
         mCamera.stopPreview();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.i(Tag, "onDestroy");
         mCamera.release();//释放资源
+        previewwrite.stop();
     }
 }
