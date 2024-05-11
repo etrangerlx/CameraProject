@@ -221,7 +221,7 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
 //        mSurfaceView = (SurfaceView) findViewById(R.id.textureView);
 //        mSurfaceHolder = mSurfaceView.getHolder();
 
-        ImageButton mCaptureButton = findViewById(R.id.btnTakePic);
+        ImageButton mCaptureButton = findViewById(R.id.btnTakePicTV);
         mCaptureButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

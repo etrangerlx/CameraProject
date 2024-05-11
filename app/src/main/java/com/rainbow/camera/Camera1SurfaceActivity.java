@@ -32,13 +32,10 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -46,6 +43,7 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class Camera1SurfaceActivity extends AppCompatActivity {
     private static String Tag = "Camera1Activity";
@@ -56,7 +54,8 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
     byte[] mPreBuffer = null;
     private Thread previewwrite = null;
     private SurfaceView mSurfaceView = null;
-
+    private ProcessWithHandlerThread processFrameHandlerThread;
+    private Handler processFrameHandler;
     private SurfaceHolder mSurfaceHolder = null;
     private SurfaceHolder.Callback mSurfaceCallback = new SurfaceHolder.Callback() {
 
@@ -229,6 +228,8 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
             FileOutputStream fos = new FileOutputStream(fileName);
             BufferedOutputStream bos = new BufferedOutputStream(fos);
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+            Toast.makeText(getApplicationContext(),
+                    "Photo saved to " + fileName, Toast.LENGTH_SHORT).show();
             bos.flush();
             bos.close();
         } catch (FileNotFoundException e) {
@@ -263,14 +264,14 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
     private Camera.PictureCallback mPictureCallback = new Camera.PictureCallback() {
         @Override
         public void onPictureTaken(final byte[] data, Camera camera) {
-            new Thread(new Runnable() {
+            runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
                     Log.d("dump path", path);
                     writeFile(path, data);
                 }
-            }, "captureThread").start();
+            });
             camera.startPreview();
         }
     };
@@ -282,10 +283,10 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
         setContentView(R.layout.activity_surfaceview);
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                if(!Environment.isExternalStorageManager()) {
+                if (!Environment.isExternalStorageManager()) {
                     Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(Uri.parse("package:"+getPackageName()));
-                    this.startActivityForResult(intent,1024);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    this.startActivityForResult(intent, 1024);
                 }
                 requestPermissions(new String[]{Manifest.permission.CAMERA}, 11);
             }
@@ -307,87 +308,17 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
         mSurfaceHolder.addCallback(mSurfaceCallback);
 
 
-        int width = mCamera.getParameters().getPreviewSize().width;
-        int height = mCamera.getParameters().getPreviewSize().height;
-        if (mPreBuffer == null) {
-            mPreBuffer = new byte[width*height*3/2];
-        }
-        mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
-        previewwrite =  new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while(true) {
-                    Log.d(Tag, "Time:" + System.currentTimeMillis());
-                    Camera.Parameters parameters = mCamera.getParameters();
+        processFrameHandlerThread = new ProcessWithHandlerThread("process frame");
+        processFrameHandler = new Handler(processFrameHandlerThread.getLooper(), processFrameHandlerThread);
 
-                    Camera.Size size = parameters.getPreviewSize();
-                    String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
-//                    String path =   "/data/local/tmp/DCIM" + "/CameraV1";
 
-                    File file = new File(path);
-                    if (!file.exists()) {
-                        file.mkdir();
-                    }
-                    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-                    String fileName = path + "/" + "IMG_" + timeStamp +"_"+width+"x"+height+".yuv";
-                    try {
-                        FileOutputStream fos = new FileOutputStream(fileName);
-                        BufferedOutputStream bos = new BufferedOutputStream(fos);
-                        bos.write(mPreBuffer);
-                        Log.i(Tag, "run: writ"+fileName);
-                        bos.flush();
-                        bos.close();
-                    } catch (FileNotFoundException e) {
-                        e.printStackTrace();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        });
-        previewwrite.start();
-        mCamera.setPreviewCallbackWithBuffer(new Camera.PreviewCallback() {
+        mCamera.setPreviewCallback(new Camera.PreviewCallback() {
             @Override
             public void onPreviewFrame(byte[] data, Camera camera) {
-                int width = mCamera.getParameters().getPreviewSize().width;
-                int height = mCamera.getParameters().getPreviewSize().height;
-                if (mPreBuffer == null) {
-                    mPreBuffer = new byte[width*height*3/2];
-                }
-                mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
+                Log.i(Tag, "Thread id:" + Thread.currentThread().getId() + ":sendData");
+                processFrameHandler.obtainMessage(ProcessWithHandlerThread.WHAT_PROCESS_FRAME, data).sendToTarget();
             }
         });
-//        mCamera.setPreviewCallback(new Camera.PreviewCallback() {
-//            @Override
-//            public void onPreviewFrame(byte[] data, Camera camera) {
-//                Log.d(Tag, "Time:" + System.currentTimeMillis());
-//                Camera.Parameters parameters = camera.getParameters();
-//                int width = mCamera.getParameters().getPreviewSize().width;
-//                int height = mCamera.getParameters().getPreviewSize().height;
-//                Camera.Size size = parameters.getPreviewSize();
-//                String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
-////                    String path =   "/data/local/tmp/DCIM" + "/CameraV1";
-//
-//                File file = new File(path);
-//                if (!file.exists()) {
-//                    file.mkdir();
-//                }
-//                String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-//                String fileName = path + "/" + "IMG_" + timeStamp +"_"+width+"x"+height+".yuv";
-//                try {
-//                    FileOutputStream fos = new FileOutputStream(fileName);
-//                    BufferedOutputStream bos = new BufferedOutputStream(fos);
-//                    bos.write(data);
-//                    Log.i(Tag, "run: writ"+fileName);
-//                    bos.flush();
-//                    bos.close();
-//                } catch (FileNotFoundException e) {
-//                    e.printStackTrace();
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        });
         ImageView exchangeview = findViewById(R.id.ivExchange);
         exchangeview.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -428,5 +359,86 @@ public class Camera1SurfaceActivity extends AppCompatActivity {
         Log.i(Tag, "onDestroy");
         mCamera.release();//释放资源
         previewwrite.stop();
+    }
+
+    public class ProcessWithHandlerThread extends HandlerThread implements Handler.Callback {
+        private static final String TAG = "HandlerThread";
+        public static final int WHAT_PROCESS_FRAME = 1;
+
+        public ProcessWithHandlerThread(String name) {
+            super(name);
+            start();
+        }
+
+        @Override
+        public boolean handleMessage(Message msg) {
+            switch (msg.what) {
+                case WHAT_PROCESS_FRAME:
+                    byte[] frameData = (byte[]) msg.obj;
+                    processFrame(frameData);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private void processFrame(byte[] frameData) {
+            Log.d(Tag, "Thread id:" + getThreadId() + ":Download data length:" + frameData.length);
+            saveyuvdata(frameData);
+        }
+    }
+
+
+    private void saveyuvdata(byte[] frameData) {
+        Log.d(Tag, "Download data Time:" + System.currentTimeMillis());
+        Camera.Parameters parameters = mCamera.getParameters();
+        int width = mCamera.getParameters().getPreviewSize().width;
+        int height = mCamera.getParameters().getPreviewSize().height;
+        Camera.Size size = parameters.getPreviewSize();
+        String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
+//                    String path =   "/data/local/tmp/DCIM" + "/CameraV1";
+
+        File file = new File(path);
+        if (!file.exists()) {
+            file.mkdirs();
+        }
+        String fileName = path + "/" + "IMG_" + width + "x" + height + System.currentTimeMillis() + ".avi";
+        try {
+            FileOutputStream output = new FileOutputStream(new File(fileName));
+            output.write(frameData);
+            output.flush();
+            output.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public class ProcessWithQueue extends Thread {
+        private static final String TAG = "Queue";
+        private LinkedBlockingQueue<byte[]> mQueue;
+
+        public ProcessWithQueue(LinkedBlockingQueue<byte[]> frameQueue) {
+            mQueue = frameQueue;
+            start();
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                byte[] frameData = null;
+                try {
+                    frameData = mQueue.take();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                processFrame(frameData);
+            }
+        }
+
+        private void processFrame(byte[] frameData) {
+            Log.i(TAG, "test");
+        }
     }
 }

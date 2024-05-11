@@ -27,7 +27,7 @@
             android:src="@drawable/ic_setting" />
 
         <ImageButton
-            android:id="@+id/btnTakePic"
+            android:id="@+id/btnTakePicGSV"
             android:layout_width="64dp"
             android:layout_height="64dp"
             android:layout_centerInParent="true"
