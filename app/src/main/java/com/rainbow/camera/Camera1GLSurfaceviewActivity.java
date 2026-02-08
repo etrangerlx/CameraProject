@@ -138,13 +138,16 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
             initVertexAttrib();
             //初始化纹理
             initTexture();
-            try {
-                mCamera.setPreviewTexture(mSurfaceTexture);
-                mCamera.startPreview();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            
+            if (mCamera != null && mSurfaceTexture != null) {
+                try {
+                    mCamera.setPreviewTexture(mSurfaceTexture);
+                    mCamera.startPreview();
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to start preview", e);
+                    throw new RuntimeException(e);
+                }
             }
-
         }
 
         @Override
@@ -156,6 +159,10 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
         public void onDrawFrame(GL10 gl) {
             //Log.v(TAG,"onDrawFrame()");
             //surfaceTexture 获取新的纹理数据
+            if (mSurfaceTexture == null) {
+                return;
+            }
+            
             mSurfaceTexture.updateTexImage();
             mSurfaceTexture.getTransformMatrix(vMatrix);
 
@@ -197,8 +204,11 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
         super.onDestroy();
 
         //应该放在SurfaceTexture销毁的地方，暂时先放在这里
-        mCamera.stopPreview();
-        mCamera.release();
+        if (mCamera != null) {
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
     }
     private void setWindowFlag() {
         Window window = getWindow();
@@ -300,9 +310,15 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
      * @return 着色器
      */
     public int loadShader(int type, String shaderSource) {
+        if (shaderSource == null || shaderSource.isEmpty()) {
+            Log.e(TAG, "Shader source is null or empty");
+            return 0;
+        }
+
         //创建着色器对象
         int shader = glCreateShader(type);
         if (shader == 0) {
+            Log.e(TAG, "Failed to create shader");
             return 0;//创建失败
         }
         //加载着色器源
@@ -314,7 +330,7 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
         glGetShaderiv(shader, GL_COMPILE_STATUS, compiled, 0);
         if (compiled[0] == 0) {
             //编译失败，执行：打印日志、删除链接到着色器程序的着色器对象、返回错误值
-            Log.e(TAG, glGetShaderInfoLog(shader));
+            Log.e(TAG, "Shader compilation failed: " + glGetShaderInfoLog(shader));
             glDeleteShader(shader);
             return 0;
         }
@@ -324,6 +340,11 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
 
     /*********************** 着色器、程序 ************************/
     public String loadShaderSource(String fname) {
+        if (fname == null || fname.isEmpty()) {
+            Log.e(TAG, "Shader filename is null or empty");
+            return "";
+        }
+
         StringBuilder strBld = new StringBuilder();
         String nextLine;
 
@@ -336,8 +357,13 @@ public class Camera1GLSurfaceviewActivity extends AppCompatActivity {
                 strBld.append(nextLine);
                 strBld.append('\n');
             }
+            br.close();
+            isr.close();
+            is.close();
         } catch (IOException e) {
+            Log.e(TAG, "Failed to load shader source: " + fname, e);
             e.printStackTrace();
+            return "";
         }
 
         return strBld.toString();

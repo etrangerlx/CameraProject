@@ -36,6 +36,18 @@
             android:name=".Camera1GLSurfaceviewActivity"
             android:exported="true">
         </activity>
+        <activity
+            android:name=".Camera2TextureViewActivity"
+            android:exported="true">
+        </activity>
+        <activity
+            android:name=".Camera2SurfaceActivity"
+            android:exported="true">
+        </activity>
+        <activity
+            android:name=".Camera2GLSurfaceviewActivity"
+            android:exported="true">
+        </activity>
     </application>
 
 </manifest>

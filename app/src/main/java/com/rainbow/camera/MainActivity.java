@@ -30,27 +30,63 @@ public class MainActivity extends AppCompatActivity {
                 break;
             }
         }
-        Button SurfViewBtn = findViewById(R.id.SurfView);
-        Button TextViewBtn = findViewById(R.id.TView);
-        Button GLSurfViewBtn = findViewById(R.id.GLSurfView);
-        SurfViewBtn.setOnClickListener(new View.OnClickListener() {
+
+        // Camera1 API buttons
+        Button camera1SurfViewBtn = findViewById(R.id.Camera1SurfView);
+        Button camera1TextViewBtn = findViewById(R.id.Camera1TView);
+        Button camera1GLSurfViewBtn = findViewById(R.id.Camera1GLSurfView);
+
+        // Camera2 API buttons
+        Button camera2SurfViewBtn = findViewById(R.id.Camera2SurfView);
+        Button camera2TextViewBtn = findViewById(R.id.Camera2TView);
+        Button camera2GLSurfViewBtn = findViewById(R.id.Camera2GLSurfView);
+
+        // Camera1 listeners
+        camera1SurfViewBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(getApplicationContext(), Camera1SurfaceActivity.class);
                 startActivity(intent);
             }
         });
-        TextViewBtn.setOnClickListener(new View.OnClickListener() {
+
+        camera1TextViewBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(getApplicationContext(), Camera1TextureViewActivity.class);
                 startActivity(intent);
             }
         });
-        GLSurfViewBtn.setOnClickListener(new View.OnClickListener() {
+
+        camera1GLSurfViewBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(getApplicationContext(), Camera1GLSurfaceviewActivity.class);
+                startActivity(intent);
+            }
+        });
+
+        // Camera2 listeners
+        camera2SurfViewBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(getApplicationContext(), Camera2SurfaceActivity.class);
+                startActivity(intent);
+            }
+        });
+
+        camera2TextViewBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(getApplicationContext(), Camera2TextureViewActivity.class);
+                startActivity(intent);
+            }
+        });
+
+        camera2GLSurfViewBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(getApplicationContext(), Camera2GLSurfaceviewActivity.class);
                 startActivity(intent);
             }
         });

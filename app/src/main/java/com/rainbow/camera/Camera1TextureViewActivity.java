@@ -32,6 +32,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class Camera1TextureViewActivity extends AppCompatActivity {
+    private static final String TAG = "Camera1TextureView";
+    
     private TextureView mTextureView;
 
     private SurfaceView mSurfaceView;
@@ -86,9 +88,12 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
 
         @Override
         public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
-            mCamera.stopPreview();
-            mCamera.release();
-            return false;
+            if (mCamera != null) {
+                mCamera.stopPreview();
+                mCamera.release();
+                mCamera = null;
+            }
+            return true;
         }
 
         @Override
@@ -111,18 +116,37 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
         }
     };
     public static final String STORAGE_PATH = Environment.getExternalStorageDirectory().toString();
+    
+    // 拍照保存的 Runnable
+    private class SavePhotoRunnable implements Runnable {
+        private final byte[] data;
+        private final String path;
+        
+        SavePhotoRunnable(byte[] data, String path) {
+            this.data = data;
+            this.path = path;
+        }
+        
+        @Override
+        public void run() {
+            if (data != null && path != null) {
+                Log.d(TAG, "Saving photo to: " + path);
+                writeFile(path, data);
+            }
+        }
+    }
+    
     private Camera.PictureCallback mPictureCallback = new Camera.PictureCallback() {
         @Override
         public void onPictureTaken(final byte[] data, Camera camera) {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
-                    Log.d("dump path", path);
-                    writeFile(path, data);
-                }
-            }, "captureThread").start();
-            camera.startPreview();
+            if (data != null) {
+                String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
+                Thread captureThread = new Thread(new SavePhotoRunnable(data, path), "captureThread");
+                captureThread.start();
+            }
+            if (camera != null) {
+                camera.startPreview();
+            }
         }
     };
 
@@ -130,14 +154,23 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
     private Camera.PreviewCallback mPreviewCallback = new Camera.PreviewCallback() {
         @Override
         public void onPreviewFrame(byte[] data, Camera camera) {
+            if (camera == null) {
+                Log.w(TAG, "Camera is null in onPreviewFrame");
+                return;
+            }
+
             String path = STORAGE_PATH + "/DCIM" + "/CameraV1";
 
             long Start = System.currentTimeMillis();
             ////TODO
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String fileName = path + "/" + "IMG_" + timeStamp + ".yuv";
-            int width=camera.getParameters().getPreviewSize().width;
-            int height=camera.getParameters().getPreviewSize().height;
+            
+            Camera.Parameters params = camera.getParameters();
+            if (params != null && params.getPreviewSize() != null) {
+                int width = params.getPreviewSize().width;
+                int height = params.getPreviewSize().height;
+            }
 //            Canvas canvas=mSurfaceHolder.lockCanvas();
 //            if (canvas != null) {
 //                canvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
@@ -147,7 +180,10 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
 //            }
             long End = System.currentTimeMillis();
             System.out.println(Thread.currentThread().getName()+",相机数据间隔:" + (End - Start));
-            mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
+            
+            if (mCamera != null && mPreBuffer != null) {
+                mCamera.addCallbackBuffer(mPreBuffer);//将此缓冲区添加到预览回调缓冲区队列中
+            }
         }
     };
     //输出图像
@@ -171,9 +207,17 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
     }
 
     public void writeFile(String path, byte[] data) {
+        if (data == null || data.length == 0) {
+            Log.e(TAG, "Data is null or empty");
+            return;
+        }
+        
         Bitmap bitmap = null;
-        if (data != null) {
+        try {
             bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to decode bitmap", e);
+            return;
         }
 
         if (bitmap != null) {
@@ -188,13 +232,19 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
                     bitmap.getHeight(), matrix, false);
             saveBmp2SD(path, rotateBmp);
             rotateBmp.recycle();
+            bitmap.recycle();
         }
     }
 
     private void saveBmp2SD(String path, Bitmap bitmap) {
+        if (bitmap == null) {
+            Log.e(TAG, "Bitmap is null, cannot save");
+            return;
+        }
+        
         File file = new File(path);
         if (!file.exists()) {
-            file.mkdir();
+            file.mkdirs();
         }
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String fileName = path + "/" + "IMG_" + timeStamp + ".jpg";
@@ -204,9 +254,12 @@ public class Camera1TextureViewActivity extends AppCompatActivity {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
             bos.flush();
             bos.close();
+            Log.d(TAG, "Photo saved to " + fileName);
         } catch (FileNotFoundException e) {
+            Log.e(TAG, "File not found: " + fileName, e);
             e.printStackTrace();
         } catch (IOException e) {
+            Log.e(TAG, "IO error while saving photo", e);
             e.printStackTrace();
         }
     }
